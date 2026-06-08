@@ -4,3 +4,5 @@ langchain-google-genai
 langchain-community
 langchain-google-community[drive]
 faiss-cpu
+google-auth
+google-auth-oauthlib
