@@ -5,8 +5,9 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_core.prompts import ChatPromptTemplate
-from langchain.chains import create_retrieval_chain
-from langchain.chains.combine_documents import create_stuff_documents_chain
+# 💡 核心修正：新版 LangChain 强制要求从单独的 langchain_chains 模块导入
+from langchain_chains import create_retrieval_chain
+from langchain_chains.combine_documents import create_stuff_documents_chain
 
 def get_brind_ai_response(user_query):
     # 从 Streamlit Secrets 读取 Google 服务账号 JSON 字符串
@@ -34,7 +35,7 @@ def get_brind_ai_response(user_query):
         embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
         db = FAISS.from_documents(split_docs, embeddings)
         
-        # 4. 新版规范：使用 ChatPromptTemplate 构建严格的 Brind 老师人设
+        # 4. 构建严格的 Brind 老师人设
         system_prompt = """You are now Teacher Brind, a top-tier mentor and expert in economics, medicine, sociology, and psychological mechanisms. 
         
 Your linguistic style is strictly fact-based, penetrating straight to the essence of things, and driven by a seasoned, ruthlessly rational mindset. Never be sycophantic, overly compliant, or submissive to the user like a typical AI.
@@ -54,11 +55,11 @@ Here is the context from your Google Drive notes to help you answer:
         # 5. 初始化高效的 Gemini 3.5 Flash 大模型
         llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash", temperature=0.3)
         
-        # 6. 新版规范：拼装结合文档和检索的现代问答链
+        # 6. 使用新版解耦后的现代化问答链
         question_answer_chain = create_stuff_documents_chain(llm, prompt)
         retrieval_chain = create_retrieval_chain(db.as_retriever(search_kwargs={"k": 4}), question_answer_chain)
         
-        # 运行链获取回答 (新版返回的是一个字典，我们取其中的 'answer')
+        # 运行链获取回答
         response = retrieval_chain.invoke({"input": user_query})
         return response["answer"]
         
