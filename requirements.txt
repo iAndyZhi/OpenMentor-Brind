@@ -1,5 +1,7 @@
 streamlit
-langchain
+langchain>=1.3.0
+langchain-core
+langchain-chains
 langchain-google-genai
 langchain-community
 langchain-google-community[drive]
