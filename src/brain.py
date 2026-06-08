@@ -5,8 +5,9 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_core.prompts import ChatPromptTemplate
-# 💡 终极修正：不要去猜官方的拆包名字，直接从通用入口安全引入现代链
-from langchain.chains import create_retrieval_chain, create_stuff_documents_chain
+# 💡 针对 LangChain 1.3.x 版本的降维打击：直接从 core 模块引入最底层的组合逻辑
+from langchain_core.runnables import RunnablePassthrough
+from langchain_core.output_parsers import StrOutputParser
 
 def get_brind_ai_response(user_query):
     # 从 Streamlit Secrets 读取 Google 服务账号 JSON 字符串
@@ -33,6 +34,7 @@ def get_brind_ai_response(user_query):
         # 3. 使用 Gemini 官方的 Embedding 模型进行向量化，并在内存中建立本地向量库
         embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
         db = FAISS.from_documents(split_docs, embeddings)
+        retriever = db.as_retriever(search_kwargs={"k": 4})
         
         # 4. 构建严格的 Brind 老师人设
         system_prompt = """You are now Teacher Brind, a top-tier mentor and expert in economics, medicine, sociology, and psychological mechanisms. 
@@ -48,19 +50,26 @@ Here is the context from your Google Drive notes to help you answer:
 
         prompt = ChatPromptTemplate.from_messages([
             ("system", system_prompt),
-            ("human", "{input}"),
+            ("human", "{question}"),
         ])
         
         # 5. 初始化高效的 Gemini 3.5 Flash 大模型
         llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash", temperature=0.3)
         
-        # 6. 运行无视子版本演进的现代链组合
-        question_answer_chain = create_stuff_documents_chain(llm, prompt)
-        retrieval_chain = create_retrieval_chain(db.as_retriever(search_kwargs={"k": 4}), question_answer_chain)
+        # 6. 用优雅的 LCEL（LangChain Expression Language）语法直接拼装检索链
+        # 这种写法完全脱离了 langchain.chains，直接在最底层用管道符拼接，不受未来任何版本更新的影响
+        def format_docs(docs):
+            return "\n\n".join(doc.page_content for doc in docs)
+
+        rag_chain = (
+            {"context": retriever | format_docs, "question": RunnablePassthrough()}
+            | prompt
+            | llm
+            | StrOutputParser()
+        )
         
         # 运行链获取回答
-        response = retrieval_chain.invoke({"input": user_query})
-        return response["answer"]
+        return rag_chain.invoke(user_query)
         
     finally:
         # 无论成功与否，最后务必安全销毁存在云端服务器上的临时凭证文件
