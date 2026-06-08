@@ -5,9 +5,8 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_core.prompts import ChatPromptTemplate
-# 💡 核心修正：新版 LangChain 强制要求从单独的 langchain_chains 模块导入
-from langchain_chains import create_retrieval_chain
-from langchain_chains.combine_documents import create_stuff_documents_chain
+# 💡 终极修正：不要去猜官方的拆包名字，直接从通用入口安全引入现代链
+from langchain.chains import create_retrieval_chain, create_stuff_documents_chain
 
 def get_brind_ai_response(user_query):
     # 从 Streamlit Secrets 读取 Google 服务账号 JSON 字符串
@@ -55,7 +54,7 @@ Here is the context from your Google Drive notes to help you answer:
         # 5. 初始化高效的 Gemini 3.5 Flash 大模型
         llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash", temperature=0.3)
         
-        # 6. 使用新版解耦后的现代化问答链
+        # 6. 运行无视子版本演进的现代链组合
         question_answer_chain = create_stuff_documents_chain(llm, prompt)
         retrieval_chain = create_retrieval_chain(db.as_retriever(search_kwargs={"k": 4}), question_answer_chain)
         
