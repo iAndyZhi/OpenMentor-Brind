@@ -1,0 +1,9 @@
+# Ignore local sensitive credentials and private data
+credentials.json
+wechat_logs/
+.env
+
+# Ignore standard Python runtime artifacts
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
