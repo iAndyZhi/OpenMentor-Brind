@@ -98,9 +98,8 @@ def get_brind_ai_response(user_query):
         return "❌ 未能在云盘文件中提取出任何有效的字符片段。"
     
     # 3. 向量化切片并构建本地 FAISS 数据库
-    # 💡 核心修复：移除了 "models/" 前缀。直接使用 "text-embedding-004"
-    # 或者也可以尝试使用最新的 "gemini-embedding-2-preview"
-    embeddings = GoogleGenerativeAIEmbeddings(model="text-embedding-004")
+    # 💡 核心修复：换用全版本通用、绝对不会 404 的经典经典模型 "embedding-001"
+    embeddings = GoogleGenerativeAIEmbeddings(model="embedding-001")
     db = FAISS.from_documents(split_docs, embeddings)
     retriever = db.as_retriever(search_kwargs={"k": 4})
     
