@@ -1,15 +1,15 @@
 import os
 import json
 import io
-import streamlit as st
+import streamlit st
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
-# 引入官方的 Google 向量包装器
-from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenAIEmbeddings
+# 修复核心：正确导入官方的 GoogleGenerativeAIEmbeddings
+from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
@@ -91,8 +91,8 @@ def get_cached_vector_store(folder_id, credentials_json_str):
     if not split_docs:
         return None, "未能在云盘文件中提取出任何有效的文本片段。"
         
-    # 【核心修正】：使用官方组件并强制锁定健康模型，彻底根除 "not callable" 兼容性报错
-    embeddings = GoogleGenAIEmbeddings(model="models/gemini-embedding-001")
+    # 修复核心：实例化正确的官方类名，并绑定健康的零门槛模型
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
     db = FAISS.from_documents(split_docs, embeddings)
     return db, None
 
@@ -119,4 +119,13 @@ Here is the context from your Google Drive notes:
     ])
     
     llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.3)
-    def format_docs(docs): return "\n\n".join
+    def format_docs(docs): return "\n\n".join(doc.page_content for doc in docs)
+
+    rag_chain = (
+        {"context": retriever | format_docs, "question": RunnablePassthrough()}
+        | prompt
+        | llm
+        | StrOutputParser()
+    )
+    
+    return rag_chain.invoke(user_query)
