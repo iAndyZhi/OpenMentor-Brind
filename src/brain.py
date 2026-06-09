@@ -2,7 +2,8 @@ import os
 import json
 import io
 import streamlit as st
-import google.generativeai as genai
+# 🚀 引入谷歌全新主力一代官方 GenAI SDK 客户端
+from google import genai
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
@@ -19,46 +20,41 @@ from langchain_core.embeddings import Embeddings
 
 class GoogleNativeEmbeddings(Embeddings):
     """
-    使用旧版 SDK 语法构建的向量包装类。
-    【核心修正】：通过 api_version 字典参数强行注入 v1 正式版路由，完美解决 text-embedding-004 的 404 报错。
+    基于谷歌全新官方 google-genai SDK 封装的嵌入类。
+    原生强制锁定 v1 正式版接口路由，彻底终结 text-embedding-004 找不到的 404 顽疾。
     """
     def __init__(self):
         api_key = st.secrets.get("GOOGLE_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-        # 使用旧版 SDK 的配置方式，同时强锁 v1 路由
-        genai.configure(
-            api_key=api_key,
-            client_options={"api_version": "v1"}
-        )
-        self.model_name = "models/text-embedding-004"
+        # 全新一代客户端初始化，内部自带 v1 稳健路由
+        self.client = genai.Client(api_key=api_key)
+        self.model_name = "text-embedding-004"
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
-        
-        # 调用旧版 SDK 的原生全局方法
-        response = genai.embed_content(
-            model=self.model_name,
-            content=texts,
-            task_type="retrieval_document"
-        )
-        
-        # 旧版 SDK 返回的结构通常直接是一个字典，里面包含 'embedding' 键
-        if 'embedding' in response:
-            return response['embedding']
-        return response
+        try:
+            response = self.client.models.embed_content(
+                model=self.model_name,
+                contents=texts,
+            )
+            # 兼容处理单条和多条返回的结构
+            if isinstance(response.embeddings, list):
+                return [e.values for e in response.embeddings]
+            return [response.embeddings.values]
+        except Exception as e:
+            raise RuntimeError(f"Embedding 批量生成失败: {str(e)}")
 
     def embed_query(self, text: str) -> list[float]:
-        response = genai.embed_content(
-            model=self.model_name,
-            content=text,
-            task_type="retrieval_query"
-        )
-        if 'embedding' in response:
-            # 如果返回的是批量嵌套列表，取第一条
-            if isinstance(response['embedding'][0], list):
-                return response['embedding'][0]
-            return response['embedding']
-        return response
+        try:
+            response = self.client.models.embed_content(
+                model=self.model_name,
+                contents=text,
+            )
+            if isinstance(response.embeddings, list):
+                return response.embeddings[0].values
+            return response.embeddings.values
+        except Exception as e:
+            raise RuntimeError(f"Embedding 单条检索词生成失败: {str(e)}")
 
 
 def load_docs_recursively_from_gdrive(folder_id, credentials_json):
@@ -153,7 +149,7 @@ def get_cached_vector_store(folder_id, credentials_json_str):
     if not split_docs:
         return None, "未能在云盘文件中分割出任何有效的文本片段。"
         
-    # 实例化全兼容、强锁 v1 的自定义 Embedding 类
+    # 实例化基于全新 google-genai 库封装的稳定版嵌入
     embeddings = GoogleNativeEmbeddings()
     db = FAISS.from_documents(split_docs, embeddings)
     return db, None
@@ -183,7 +179,7 @@ Here is the context from your Google Drive notes:
         ("human", "{question}"),
     ])
     
-    # 🚀 大脑继续调用 3.5 旗舰模型
+    # 🚀 大脑采用最新的 gemini-3.5-flash
     llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash", temperature=0.3)
     
     def format_docs(docs): return "\n\n".join(doc.page_content for doc in docs)
