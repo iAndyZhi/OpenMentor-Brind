@@ -22,7 +22,7 @@ def get_brind_ai_response(user_query):
         loader = GoogleDriveLoader(
             folder_id=os.environ.get("GOOGLE_DRIVE_FOLDER_ID"),
             service_account_key=temp_cred_path,
-            recursive=False
+            recursive=True
         )
         docs = loader.load()
 
