@@ -107,7 +107,8 @@ def get_cached_vector_store(folder_id, credentials_json_str):
     if not split_docs:
         return None, "未能在云盘文件中分割出任何有效的文本片段。"
         
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
+    # 🛠️ 【核心修正】：将 Embedding 模型强制指定为最稳健、绝不 404 的经典全兼容模型
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
     db = FAISS.from_documents(split_docs, embeddings)
     return db, None
 
@@ -136,9 +137,16 @@ Here is the context from your Google Drive notes:
         ("human", "{question}"),
     ])
     
-    # 🚀 全线升级到最新的 gemini-3.5-flash 模型
+    # 🚀 保持你指定的最新 3.5 旗舰代号
     llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash", temperature=0.3)
     
     def format_docs(docs): return "\n\n".join(doc.page_content for doc in docs)
 
     rag_chain = (
+        {"context": retriever | format_docs, "question": RunnablePassthrough()}
+        | prompt
+        | llm
+        | StrOutputParser()
+    )
+    
+    return rag_chain.invoke(user_query)
