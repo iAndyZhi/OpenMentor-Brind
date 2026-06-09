@@ -5,38 +5,44 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_core.prompts import ChatPromptTemplate
-# 💡 针对 LangChain 1.3.x 版本的降维打击：直接从 core 模块引入最底层的组合逻辑
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 
 def get_brind_ai_response(user_query):
-    # 从 Streamlit Secrets 读取 Google 服务账号 JSON 字符串
+    # Fetch Google Credentials JSON string from Streamlit Secrets
     credentials_json_str = os.environ.get("GOOGLE_CREDENTIALS_JSON")
     
-    # 使用 NamedTemporaryFile 创建临时凭证文件，供 GoogleDriveLoader 读取
+    # Create a temporary file to hold credentials for GoogleDriveLoader
     with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json") as temp_cred_file:
         temp_cred_file.write(credentials_json_str)
         temp_cred_path = temp_cred_file.name
 
     try:
-        # 1. 动态从指定的 Google Drive 文件夹加载最新的老师笔记/聊天记录
+        # 1. Dynamically load documents from the specified Google Drive folder
         loader = GoogleDriveLoader(
             folder_id=os.environ.get("GOOGLE_DRIVE_FOLDER_ID"),
             service_account_key=temp_cred_path,
             recursive=False
         )
         docs = loader.load()
+
+        # SAFEGUARD: Check if the folder is empty or inaccessible
+        if not docs:
+            return "❌ 思维库当前为空，或account没有被授权查看该 Google Drive folder。请检查云盘共享设置！"
         
-        # 2. 将高密度的笔记文本切分成适合 AI 检索的小片段（Chunks）
+        # 2. Split high-density documents into smaller chunks
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=100)
         split_docs = text_splitter.split_documents(docs)
+
+        if not split_docs:
+            return "❌ 未能在文件夹中解析出任何有效文本片段，请确保文件内含有可读的文本内容。"
         
-        # 3. 使用 Gemini 官方的 Embedding 模型进行向量化，并在内存中建立本地向量库
+        # 3. Vectorize text chunks and initialize FAISS vector store
         embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
         db = FAISS.from_documents(split_docs, embeddings)
         retriever = db.as_retriever(search_kwargs={"k": 4})
         
-        # 4. 构建严格的 Brind 老师人设
+        # 4. Construct Brind's rigorous persona
         system_prompt = """You are now Teacher Brind, a top-tier mentor and expert in economics, medicine, sociology, and psychological mechanisms. 
         
 Your linguistic style is strictly fact-based, penetrating straight to the essence of things, and driven by a seasoned, ruthlessly rational mindset. Never be sycophantic, overly compliant, or submissive to the user like a typical AI.
@@ -53,11 +59,10 @@ Here is the context from your Google Drive notes to help you answer:
             ("human", "{question}"),
         ])
         
-        # 5. 初始化高效的 Gemini 3.5 Flash 大模型
+        # 5. Gemini 3.5 Flash 
         llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash", temperature=0.3)
         
-        # 6. 用优雅的 LCEL（LangChain Expression Language）语法直接拼装检索链
-        # 这种写法完全脱离了 langchain.chains，直接在最底层用管道符拼接，不受未来任何版本更新的影响
+        # 6. Assemble the RAG pipeline using LCEL syntax
         def format_docs(docs):
             return "\n\n".join(doc.page_content for doc in docs)
 
@@ -68,11 +73,11 @@ Here is the context from your Google Drive notes to help you answer:
             | StrOutputParser()
         )
         
-        # 运行链获取回答
+        # Execute chain and return the final response
         return rag_chain.invoke(user_query)
         
     finally:
-        # 无论成功与否，最后务必安全销毁存在云端服务器上的临时凭证文件
+        # Securely destroy the temporary credential file in all circumstances
         if os.path.exists(temp_cred_path):
             try:
                 os.remove(temp_cred_path)
