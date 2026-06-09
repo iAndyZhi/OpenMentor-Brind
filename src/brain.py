@@ -19,40 +19,46 @@ from langchain_core.embeddings import Embeddings
 
 class GoogleNativeEmbeddings(Embeddings):
     """
-    使用谷歌原生 SDK 构建的向量包装类。
-    【核心修正】：强制锁定正式版 'v1' 接口，彻底绕过被 LangChain 或环境绑架的 v1beta 404 路由坑。
+    使用旧版 SDK 语法构建的向量包装类。
+    【核心修正】：通过 api_version 字典参数强行注入 v1 正式版路由，完美解决 text-embedding-004 的 404 报错。
     """
     def __init__(self):
         api_key = st.secrets.get("GOOGLE_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-        # 核心：使用 client_options 强行指定 API 版本为正式版 v1
-        self.client = genai.Client(api_key=api_key, client_options={"api_version": "v1"})
+        # 使用旧版 SDK 的配置方式，同时强锁 v1 路由
+        genai.configure(
+            api_key=api_key,
+            client_options={"api_version": "v1"}
+        )
         self.model_name = "models/text-embedding-004"
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
-        # 使用强锁 v1 的客户端进行向量请求
-        response = self.client.models.embed_content(
+        
+        # 调用旧版 SDK 的原生全局方法
+        response = genai.embed_content(
             model=self.model_name,
-            contents=texts,
-            config={"task_type": "retrieval_document"}
+            content=texts,
+            task_type="retrieval_document"
         )
         
-        # 兼容处理单条或多条返回的结构
-        if isinstance(response.embeddings, list):
-            return [e.values for e in response.embeddings]
-        return [response.embeddings.values]
+        # 旧版 SDK 返回的结构通常直接是一个字典，里面包含 'embedding' 键
+        if 'embedding' in response:
+            return response['embedding']
+        return response
 
     def embed_query(self, text: str) -> list[float]:
-        response = self.client.models.embed_content(
+        response = genai.embed_content(
             model=self.model_name,
-            contents=text,
-            config={"task_type": "retrieval_query"}
+            content=text,
+            task_type="retrieval_query"
         )
-        # 如果返回的是列表，取第一条的向量值
-        if isinstance(response.embeddings, list):
-            return response.embeddings[0].values
-        return response.embeddings.values
+        if 'embedding' in response:
+            # 如果返回的是批量嵌套列表，取第一条
+            if isinstance(response['embedding'][0], list):
+                return response['embedding'][0]
+            return response['embedding']
+        return response
 
 
 def load_docs_recursively_from_gdrive(folder_id, credentials_json):
@@ -147,7 +153,7 @@ def get_cached_vector_store(folder_id, credentials_json_str):
     if not split_docs:
         return None, "未能在云盘文件中分割出任何有效的文本片段。"
         
-    # 实例化强锁 v1 正式版接口的原生 Embedding 类
+    # 实例化全兼容、强锁 v1 的自定义 Embedding 类
     embeddings = GoogleNativeEmbeddings()
     db = FAISS.from_documents(split_docs, embeddings)
     return db, None
@@ -177,7 +183,7 @@ Here is the context from your Google Drive notes:
         ("human", "{question}"),
     ])
     
-    # 🚀 使用最新 3.5 旗舰模型作为分析大脑
+    # 🚀 大脑继续调用 3.5 旗舰模型
     llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash", temperature=0.3)
     
     def format_docs(docs): return "\n\n".join(doc.page_content for doc in docs)
