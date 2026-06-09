@@ -28,7 +28,7 @@ def load_docs_recursively_from_gdrive(folder_id, credentials_json):
     folders_to_scan = [folder_id]
     all_files = []
     
-    # 1. 深度优先递归遍历所有子文件夹，榨干每一层级
+    # 1. 深度优先递归遍历所有子文件夹
     while folders_to_scan:
         current_folder = folders_to_scan.pop(0)
         try:
@@ -80,9 +80,6 @@ def load_docs_recursively_from_gdrive(folder_id, credentials_json):
 
 def get_brind_ai_response(user_query):
     credentials_json_str = os.environ.get("GOOGLE_CREDENTIALS_JSON")
-    folder_id = os.environ.get("GOOGLE_CREDENTIALS_JSON") # 修正：若配置错误自动兜底
-    
-    # 动态适配，防止混淆环境变量
     folder_id = os.environ.get("GOOGLE_DRIVE_FOLDER_ID")
     
     # 1. 启动原生全盘扫描
@@ -93,7 +90,7 @@ def get_brind_ai_response(user_query):
     if not docs:
         return "❌ Brind 老师的思维库当前为空，或者服务账号没有被授权查看该 Google Drive 文件夹。请确保该文件夹内包含有效的 .txt、.md 笔记或 Google Docs！"
         
-    # 2. 将高密度笔记切分成碎片，防止撑爆上下文或丢失核心逻辑
+    # 2. 将高密度笔记切分成碎片
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=100)
     split_docs = text_splitter.split_documents(docs)
     
@@ -101,7 +98,9 @@ def get_brind_ai_response(user_query):
         return "❌ 未能在云盘文件中提取出任何有效的字符片段。"
     
     # 3. 向量化切片并构建本地 FAISS 数据库
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
+    # 💡 核心修复：移除了 "models/" 前缀。直接使用 "text-embedding-004"
+    # 或者也可以尝试使用最新的 "gemini-embedding-2-preview"
+    embeddings = GoogleGenerativeAIEmbeddings(model="text-embedding-004")
     db = FAISS.from_documents(split_docs, embeddings)
     retriever = db.as_retriever(search_kwargs={"k": 4})
     
