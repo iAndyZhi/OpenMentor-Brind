@@ -2,17 +2,47 @@ import os
 import json
 import io
 import streamlit as st
+import google.generativeai as genai
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
-from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.documents import Document
+from langchain_core.embeddings import Embeddings
+
+# 配置官方 SDK 的 API Key
+if st.secrets.get("GOOGLE_API_KEY"):
+    genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+elif os.environ.get("GOOGLE_API_KEY"):
+    genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
+
+
+class GoogleNativeEmbeddings(Embeddings):
+    """
+    使用谷歌官方最新原生 SDK 自定义构建的包装类，彻底绕过 LangChain 404 路由坑
+    """
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        # 使用当前全球通用最稳定的主力向量模型 text-embedding-004
+        response = genai.embed_content(
+            model="models/text-embedding-004",
+            content=texts,
+            task_type="retrieval_document"
+        )
+        return response['embedding']
+
+    def embed_query(self, text: str) -> list[float]:
+        response = genai.embed_content(
+            model="models/text-embedding-004",
+            content=text,
+            task_type="retrieval_query"
+        )
+        return response['embedding'][0]
 
 
 def load_docs_recursively_from_gdrive(folder_id, credentials_json):
@@ -107,8 +137,8 @@ def get_cached_vector_store(folder_id, credentials_json_str):
     if not split_docs:
         return None, "未能在云盘文件中分割出任何有效的文本片段。"
         
-    # 🛠️ 【核心修正】：将 Embedding 模型强制指定为最稳健、绝不 404 的经典全兼容模型
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+    # 🛠️ 【终极换脑】：使用我们封装的原生稳定版 Embedding 引擎
+    embeddings = GoogleNativeEmbeddings()
     db = FAISS.from_documents(split_docs, embeddings)
     return db, None
 
@@ -137,7 +167,7 @@ Here is the context from your Google Drive notes:
         ("human", "{question}"),
     ])
     
-    # 🚀 保持你指定的最新 3.5 旗舰代号
+    # 🚀 模型大脑保持为你指定的最新主力 gemini-3.5-flash 
     llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash", temperature=0.3)
     
     def format_docs(docs): return "\n\n".join(doc.page_content for doc in docs)
