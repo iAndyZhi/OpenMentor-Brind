@@ -3,8 +3,7 @@ google-generativeai
 google-api-python-client
 google-auth
 langchain
-langchain-core
-langchain-community
 langchain-text-splitters
+langchain-community
 langchain-google-genai
 faiss-cpu
