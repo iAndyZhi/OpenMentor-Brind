@@ -8,7 +8,6 @@ from googleapiclient.http import MediaIoBaseDownload
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
-# 保持官方正确包装器导入
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
@@ -20,7 +19,6 @@ def load_docs_recursively_from_gdrive(folder_id, credentials_json):
     """
     深度递归扫描母文件夹及【所有子文件夹】
     """
-    # 【防御性代码】：如果你不小心把整个云盘 URL 贴进了 Secrets，这里会自动切出干净的纯 ID
     if "folders/" in folder_id:
         folder_id = folder_id.split("folders/")[-1].split("?")[0].strip()
     else:
@@ -35,8 +33,6 @@ def load_docs_recursively_from_gdrive(folder_id, credentials_json):
 
     folders_to_scan = [folder_id]
     all_files = []
-    
-    print(f"🚀 开始扫描母文件夹，ID 为: {folder_id}")
 
     while folders_to_scan:
         current_folder = folders_to_scan.pop(0)
@@ -56,11 +52,10 @@ def load_docs_recursively_from_gdrive(folder_id, credentials_json):
                 else:
                     all_files.append(f)
         except Exception as e:
-            # 【诊断升级】：不再静默吞掉异常，如果是 API 报错（例如 404/403）直接顶到前端显示
             return None, f"谷歌云盘接口请求失败。当前扫描的文件夹 ID 为: {current_folder}。错误明细: {str(e)}"
 
     if not all_files:
-        return None, f"机器人成功进入了云盘，但在该文件夹(ID: {folder_id})内没有找到任何文件。请确认文件夹内是否有内容。"
+        return None, f"机器人成功进入了云盘，但在该文件夹(ID: {folder_id})内没有找到任何文件。"
 
     documents = []
     skipped_files = []
@@ -93,9 +88,8 @@ def load_docs_recursively_from_gdrive(folder_id, credentials_json):
         except Exception as e:
             print(f" 🚸 读取文件 {fname} 失败，自动跳过: {e}")
             
-    # 【诊断升级】：如果是由于文件格式不匹配导致列表为空，给出极其精准的诊断提示
     if not documents and skipped_files:
-        return None, f"⚠️ 在云盘中找到了 {len(skipped_files)} 个文件，但它们的格式目前无法被机器人解析。目前系统仅支持直接提取『Google 文档(Google Docs)』或『.txt/.md 纯文本』。请在云盘中将非标文件右键『另存为 Google 文档』后再试。\n\n检测到的文件列表: {', '.join(skipped_files)}"
+        return None, f"⚠️ 未能解析格式。目前系统仅支持『Google 文档』或『.txt/.md 纯文本』。\n\n检测到的文件列表: {', '.join(skipped_files)}"
         
     return documents, None
 
@@ -119,14 +113,11 @@ def get_cached_vector_store(folder_id, credentials_json_str):
 
 
 def get_brind_ai_response(user_query):
-    # 【核心改进】：全面从 os.environ 切换到 Streamlit 标准的 st.secrets，确保本地和云端读取绝对稳定
     credentials_json_str = st.secrets.get("GOOGLE_CREDENTIALS_JSON")
     folder_id = st.secrets.get("GOOGLE_DRIVE_FOLDER_ID")
     
-    if not credentials_json_str:
-        return "❌ 部署错误：未在 Streamlit Secrets 中成功读取到 GOOGLE_CREDENTIALS_JSON"
-    if not folder_id:
-        return "❌ 部署错误：未在 Streamlit Secrets 中成功读取到 GOOGLE_DRIVE_FOLDER_ID"
+    if not credentials_json_str or not folder_id:
+        return "❌ 部署错误：未在 Streamlit Secrets 中成功读取到配置项"
     
     db, error_msg = get_cached_vector_store(folder_id, credentials_json_str)
     if error_msg: return f"❌ {error_msg}"
@@ -145,14 +136,9 @@ Here is the context from your Google Drive notes:
         ("human", "{question}"),
     ])
     
-    llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.3)
+    # 🚀 全线升级到最新的 gemini-3.5-flash 模型
+    llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash", temperature=0.3)
+    
     def format_docs(docs): return "\n\n".join(doc.page_content for doc in docs)
 
     rag_chain = (
-        {"context": retriever | format_docs, "question": RunnablePassthrough()}
-        | prompt
-        | llm
-        | StrOutputParser()
-    )
-    
-    return rag_chain.invoke(user_query)
